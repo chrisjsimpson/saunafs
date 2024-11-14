@@ -24,6 +24,7 @@
 
 #include "common/small_vector.h"
 #include "common/time_utils.h"
+#include "mount/memory_info.h"
 
 #include <atomic>
 #include <cassert>
@@ -39,10 +40,11 @@
 #define MISSING_OFFSET_PTR nullptr
 
 inline std::atomic<uint64_t> gReadCacheMaxSize;
-inline std::mutex gUsedReadCacheMemoryMutex;
-inline uint64_t gUsedReadCacheMemory;
+inline std::mutex gReadCacheMemoryMutex;
+inline std::atomic<uint64_t> gUsedReadCacheMemory;
 inline std::atomic<bool> gReadCacheMemoryAlmostExceeded = false;
 using MutexSharedPtr = std::shared_ptr<std::mutex>;
+inline std::atomic<uint32_t> gCacheExpirationTime_ms;
 
 class ReadCache {
 public:
@@ -81,7 +83,7 @@ public:
 		}
 
 		void reset_timer() {
-			return timer.reset();
+			timer.reset();
 		}
 
 		Offset endOffset() const {
@@ -287,6 +289,7 @@ public:
 	void collectGarbage(unsigned count = 1000000) {
 		unsigned reserved_count = count;
 		auto it = lru_.begin();
+		expiration_time_ = gCacheExpirationTime_ms.load();
 		
 		std::vector<Entry *> entriesToErase;
 		while (!lru_.empty() && count-- > 0 && it != lru_.end()) {
@@ -419,7 +422,7 @@ protected:
 			reserved_entries_.push_back(*e);
 		} else {
 			assert(e->refcount == 0);
-			std::unique_lock lock(gUsedReadCacheMemoryMutex);
+			std::unique_lock lock(gReadCacheMemoryMutex);
 			gUsedReadCacheMemory -= e->buffer.size();
 			gReadCacheMemoryAlmostExceeded =
 			    gUsedReadCacheMemory >=
@@ -434,7 +437,7 @@ protected:
 	}
 
 	void clearReserved(unsigned count) {
-		std::unique_lock<std::mutex> lock(gUsedReadCacheMemoryMutex,
+		std::unique_lock<std::mutex> lock(gReadCacheMemoryMutex,
 		                                  std::defer_lock);
 		while (!reserved_entries_.empty() && count-- > 0) {
 			Entry *e = std::addressof(reserved_entries_.front());
