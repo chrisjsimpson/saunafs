@@ -34,7 +34,6 @@
 inline std::atomic<uint32_t> gReadaheadMaxWindowSize;
 inline std::atomic<uint32_t> gCacheExpirationTime_ms;
 inline std::atomic<uint32_t> gMaxReadaheadRequests;
-inline std::atomic<uint64_t> gReadCacheMaxSize;
 
 enum class ReadaheadRequestState {
 	kInqueued,

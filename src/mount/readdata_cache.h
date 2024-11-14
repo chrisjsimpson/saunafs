@@ -38,8 +38,10 @@
 
 #define MISSING_OFFSET_PTR nullptr
 
+inline std::atomic<uint64_t> gReadCacheMaxSize;
 inline std::mutex gUsedReadCacheMemoryMutex;
 inline uint64_t gUsedReadCacheMemory;
+inline std::atomic<bool> gReadCacheMemoryAlmostExceeded = false;
 using MutexSharedPtr = std::shared_ptr<std::mutex>;
 
 class ReadCache {
@@ -419,6 +421,9 @@ protected:
 			assert(e->refcount == 0);
 			std::unique_lock lock(gUsedReadCacheMemoryMutex);
 			gUsedReadCacheMemory -= e->buffer.size();
+			gReadCacheMemoryAlmostExceeded =
+			    gUsedReadCacheMemory >=
+			    static_cast<uint64_t>(0.8 * gReadCacheMaxSize.load());
 			lock.unlock();
 			auto mutexPtr = e->mutexPtr;
 			std::unique_lock entryLock(*mutexPtr);
@@ -436,6 +441,9 @@ protected:
 			if (e->refcount == 0) {
 				lock.lock();
 				gUsedReadCacheMemory -= e->buffer.size();
+				gReadCacheMemoryAlmostExceeded =
+				    gUsedReadCacheMemory >=
+				    static_cast<uint64_t>(0.8 * gReadCacheMaxSize.load());
 				lock.unlock();
 				reserved_entries_.pop_front();
 				auto mutexPtr = e->mutexPtr;
